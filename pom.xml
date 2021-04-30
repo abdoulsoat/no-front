@@ -31,15 +31,14 @@
     <distributionManagement>
         <snapshotRepository>
             <id>snapshots</id>
-            <url>http://localhost:8081/repository/test1-snapshot/</url>
+            <url>http://docker.for.mac.localhost:8081/repository/test1-snapshot/</url>
         </snapshotRepository>
         <repository>
             <id>releases</id>
-            <url>http://localhost:8081/libs-release</url>
+            <url>http://docker.for.mac.localhost:8081/libs-release</url>
         </repository>
     </distributionManagement>
     <!-- jhipster-needle-distribution-management -->
-
     <properties>
         <!-- Build properties -->
         <maven.version>3.3.9</maven.version>
