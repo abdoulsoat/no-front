@@ -1,12 +1,15 @@
 package com.mycompany.myapp.web.rest;
 
 import com.mycompany.myapp.NoFrontApp;
+import com.mycompany.myapp.domain.User;
+import com.mycompany.myapp.repository.UserRepository;
 import com.mycompany.myapp.web.rest.vm.LoginVM;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
 /**
@@ -17,12 +20,26 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 public class UserJWTControllerIT {
 
     @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Autowired
     private WebTestClient webTestClient;
 
     @Test
     public void testAuthorize() throws Exception {
+        User user = new User();
+        user.setLogin("user-jwt-controller");
+        user.setEmail("user-jwt-controller@example.com");
+        user.setActivated(true);
+        user.setPassword(passwordEncoder.encode("test"));
+
+        userRepository.save(user).block();
+
         LoginVM login = new LoginVM();
-        login.setUsername("test");
+        login.setUsername("user-jwt-controller");
         login.setPassword("test");
         webTestClient.post().uri("/api/authenticate")
             .contentType(MediaType.APPLICATION_JSON)
@@ -36,8 +53,16 @@ public class UserJWTControllerIT {
 
     @Test
     public void testAuthorizeWithRememberMe() throws Exception {
+        User user = new User();
+        user.setLogin("user-jwt-controller-remember-me");
+        user.setEmail("user-jwt-controller-remember-me@example.com");
+        user.setActivated(true);
+        user.setPassword(passwordEncoder.encode("test"));
+
+        userRepository.save(user).block();
+
         LoginVM login = new LoginVM();
-        login.setUsername("test");
+        login.setUsername("user-jwt-controller-remember-me");
         login.setPassword("test");
         login.setRememberMe(true);
         webTestClient.post().uri("/api/authenticate")

@@ -3,7 +3,6 @@ package com.mycompany.myapp.config;
 import com.mycompany.myapp.security.AuthoritiesConstants;
 import com.mycompany.myapp.security.jwt.JWTFilter;
 import com.mycompany.myapp.security.jwt.TokenProvider;
-import org.springframework.boot.autoconfigure.security.SecurityProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
@@ -13,15 +12,13 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.SecurityWebFiltersOrder;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
-import org.springframework.security.core.userdetails.MapReactiveUserDetailsService;
 import org.springframework.security.core.userdetails.ReactiveUserDetailsService;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.header.ReferrerPolicyServerHttpHeadersWriter;
 import org.springframework.security.web.server.util.matcher.NegatedServerWebExchangeMatcher;
 import org.springframework.security.web.server.util.matcher.OrServerWebExchangeMatcher;
-import org.springframework.util.StringUtils;
 import org.zalando.problem.spring.webflux.advice.security.SecurityProblemSupport;
 
 import static org.springframework.security.web.server.util.matcher.ServerWebExchangeMatchers.pathMatchers;
@@ -31,29 +28,28 @@ import static org.springframework.security.web.server.util.matcher.ServerWebExch
 @Import(SecurityProblemSupport.class)
 public class SecurityConfiguration {
 
+    private final ReactiveUserDetailsService userDetailsService;
+
     private final TokenProvider tokenProvider;
 
     private final SecurityProblemSupport problemSupport;
 
-    public SecurityConfiguration(TokenProvider tokenProvider, SecurityProblemSupport problemSupport) {
+    public SecurityConfiguration(ReactiveUserDetailsService userDetailsService, TokenProvider tokenProvider, SecurityProblemSupport problemSupport) {
+        this.userDetailsService = userDetailsService;
         this.tokenProvider = tokenProvider;
         this.problemSupport = problemSupport;
     }
 
     @Bean
-    public MapReactiveUserDetailsService userDetailsService(SecurityProperties properties) {
-        SecurityProperties.User user = properties.getUser();
-        UserDetails userDetails = User
-            .withUsername(user.getName())
-            .password("{noop}" + user.getPassword())
-            .roles(StringUtils.toStringArray(user.getRoles()))
-            .build();
-        return new MapReactiveUserDetailsService(userDetails);
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
     }
 
     @Bean
-    public ReactiveAuthenticationManager reactiveAuthenticationManager(ReactiveUserDetailsService userDetailsService) {
-        return new UserDetailsRepositoryReactiveAuthenticationManager(userDetailsService);
+    public ReactiveAuthenticationManager reactiveAuthenticationManager() {
+        UserDetailsRepositoryReactiveAuthenticationManager authenticationManager = new UserDetailsRepositoryReactiveAuthenticationManager(userDetailsService);
+        authenticationManager.setPasswordEncoder(passwordEncoder());
+        return authenticationManager;
     }
 
     @Bean
@@ -67,6 +63,7 @@ public class SecurityConfiguration {
             .csrf()
                 .disable()
             .addFilterAt(new JWTFilter(tokenProvider), SecurityWebFiltersOrder.HTTP_BASIC)
+            .authenticationManager(reactiveAuthenticationManager())
             .exceptionHandling()
                 .accessDeniedHandler(problemSupport)
                 .authenticationEntryPoint(problemSupport)
@@ -81,6 +78,11 @@ public class SecurityConfiguration {
                 .frameOptions().disable()
         .and()
             .authorizeExchange()
+            .pathMatchers("/api/register").permitAll()
+            .pathMatchers("/api/activate").permitAll()
+            .pathMatchers("/api/authenticate").permitAll()
+            .pathMatchers("/api/account/reset-password/init").permitAll()
+            .pathMatchers("/api/account/reset-password/finish").permitAll()
             .pathMatchers("/api/auth-info").permitAll()
             .pathMatchers("/api/**").authenticated()
             .pathMatchers("/services/**", "/swagger-resources/**", "/v2/api-docs").authenticated()

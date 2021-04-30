@@ -1,7 +1,9 @@
 package com.mycompany.myapp.web.rest;
 
+import com.mycompany.myapp.config.Constants;
 import com.mycompany.myapp.security.jwt.JWTFilter;
 import com.mycompany.myapp.security.jwt.TokenProvider;
+import com.mycompany.myapp.service.AuditEventService;
 import com.mycompany.myapp.web.rest.vm.LoginVM;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -11,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.ReactiveAuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -28,9 +31,12 @@ public class UserJWTController {
 
     private final ReactiveAuthenticationManager authenticationManager;
 
-    public UserJWTController(TokenProvider tokenProvider, ReactiveAuthenticationManager authenticationManager) {
+    private final AuditEventService auditEventService;
+
+    public UserJWTController(TokenProvider tokenProvider, ReactiveAuthenticationManager authenticationManager, AuditEventService auditEventService) {
         this.tokenProvider = tokenProvider;
         this.authenticationManager = authenticationManager;
+        this.auditEventService = auditEventService;
     }
 
     @PostMapping("/authenticate")
@@ -38,6 +44,8 @@ public class UserJWTController {
         return loginVM
             .flatMap(login -> authenticationManager
                 .authenticate(new UsernamePasswordAuthenticationToken(login.getUsername(), login.getPassword()))
+                .onErrorResume(throwable -> onAuthenticationError(login, throwable))
+                .flatMap(auth -> onAuthenticationSuccess(login, auth))
                 .flatMap(auth -> Mono.fromCallable(() -> tokenProvider.createToken(auth, Boolean.TRUE.equals(login.isRememberMe()))))
             )
             .map(jwt -> {
@@ -45,6 +53,22 @@ public class UserJWTController {
                 httpHeaders.add(JWTFilter.AUTHORIZATION_HEADER, "Bearer " + jwt);
                 return new ResponseEntity<>(new JWTToken(jwt), httpHeaders, HttpStatus.OK);
             });
+    }
+
+    private Mono<? extends Authentication> onAuthenticationSuccess(LoginVM login, Authentication auth) {
+        return Mono.just(login)
+            .map(LoginVM::getUsername)
+            .filter(username -> !Constants.ANONYMOUS_USER.equals(username))
+            .flatMap(auditEventService::saveAuthenticationSuccess)
+            .thenReturn(auth);
+    }
+
+    private Mono<? extends Authentication> onAuthenticationError(LoginVM login, Throwable throwable) {
+        return Mono.just(login)
+            .map(LoginVM::getUsername)
+            .filter(username -> !Constants.ANONYMOUS_USER.equals(username))
+            .flatMap(username -> auditEventService.saveAuthenticationError(username, throwable))
+            .then(Mono.error(throwable));
     }
 
     /**
